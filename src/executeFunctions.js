@@ -49,7 +49,7 @@ const createHandler = (currentPath, fn) => {
         maybeThennable
           .then((result) => {
             process.env = originalEnv;
-            console.log(`Succesfully invoked scheduled function: [${fn.name.split("-").pop()}]`)
+            console.log(`Succesfully invoked stream function: [${fn.name.split("-").pop()}]`)
             return cb(null, result);
           })
           .catch((err) => cb(err));
