@@ -1,5 +1,6 @@
 const { isNil, isFunction, map } = require('lodash');
 const requireWithoutCache = require('require-without-cache');
+const path = require('path');
 
 const promisify = (foo) =>
   new Promise((resolve, reject) => {
@@ -12,19 +13,35 @@ const promisify = (foo) =>
     });
   });
 
-const createHandler = (location, fn) => {
+const createHandler = (currentPath, fn) => {
   const originalEnv = Object.assign({}, process.env);
   process.env = Object.assign({}, originalEnv, fn.environment);
 
-  const handler = requireWithoutCache(
-    location + '/' + fn.handler.split('.')[0],
-    require
-  )[
-    fn.handler
-      .split('/')
-      .pop()
-      .split('.')[1]
-  ];
+  // Input: '/some/path/maybe/.hidden/dir/file.someFunction'
+  // Output:
+  //   handlerPath = '/some/path/maybe/.hidden/dir/file'
+  //   handlerName = 'someFunction'
+  const matches = /(.*)\.(\w+)/.exec(fn.handler);
+  if (!matches) {
+    const error = new Error(
+      `Expected handler string to include both a path and a function name separated by '.', got ${
+        fn.handler
+      } instead`
+    );
+    return () => promisify(cb => cb(error));
+  }
+
+  const [, handlerPath, handlerName] = matches;
+  const fullHandlerPath = path.join(currentPath, handlerPath);
+
+  // TODO | MED | Raf: Enable logging of some form to help users to diagnose
+  // why things go wrong
+  // console.log('Current path: ' + currentPath);
+  // console.log('Specified handler path: ' + handlerPath);
+  // console.log('Full handler path: ' + fullHandlerPath);
+
+  const handler = requireWithoutCache(fullHandlerPath, require)[handlerName];
+
   return (event, context = {}) =>
     promisify((cb) => {
       const maybeThennable = handler(event, context, cb);
@@ -32,6 +49,7 @@ const createHandler = (location, fn) => {
         maybeThennable
           .then((result) => {
             process.env = originalEnv;
+            console.log(`Succesfully invoked scheduled function: [${fn.name.split("-").pop()}]`)
             return cb(null, result);
           })
           .catch((err) => cb(err));
